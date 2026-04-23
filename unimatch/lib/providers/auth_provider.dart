@@ -13,6 +13,7 @@ class AuthProvider extends ChangeNotifier {
   UserModel? _user;
   String? _error;
   bool _loading = false;
+  bool _suppressAuthStateRebuild = false;
 
   AuthStatus get status => _status;
   UserModel? get user => _user;
@@ -24,6 +25,7 @@ class AuthProvider extends ChangeNotifier {
   }
 
   void _onAuthStateChanged(User? firebaseUser) async {
+    if (_suppressAuthStateRebuild) return;
     if (firebaseUser == null) {
       _status = AuthStatus.unauthenticated;
       _user = null;
@@ -33,6 +35,7 @@ class AuthProvider extends ChangeNotifier {
     }
     notifyListeners();
   }
+
   Future<void> resetPassword(String email) async {
     await _repo.resetPassword(email);
   }
@@ -78,6 +81,7 @@ class AuthProvider extends ChangeNotifier {
     double? hourlyRate,
   }) async {
     _setLoading(true);
+    _suppressAuthStateRebuild = true;
     try {
       _user = await _repo.signUpTutor(
         email: email,
@@ -88,6 +92,7 @@ class AuthProvider extends ChangeNotifier {
       );
       return true;
     } on FirebaseAuthException catch (e) {
+      _suppressAuthStateRebuild = false;
       _error = _mapAuthError(e.code);
       notifyListeners();
       return false;
@@ -96,10 +101,17 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> storeTutorIdCard(String idCardUrl) async {
-    if (_user == null) return;
-    await _repo.firestoreService.updateUser(_user!.uid, {'idCardUrl': idCardUrl});
-    _user = _user!.copyWith(idCardUrl: idCardUrl);
+  Future<void> storeTutorIdCard(String uid, String idCardUrl) async {
+    await _repo.firestoreService.updateUser(uid, {'idCardUrl': idCardUrl});
+    if (_user != null) {
+      _user = _user!.copyWith(idCardUrl: idCardUrl);
+      notifyListeners();
+    }
+  }
+
+  void completeSignUp() {
+    _suppressAuthStateRebuild = false;
+    _status = AuthStatus.authenticated;
     notifyListeners();
   }
 

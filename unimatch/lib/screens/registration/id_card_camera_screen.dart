@@ -8,14 +8,19 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:provider/provider.dart';
 import '../../services/id_card_service.dart';
 import '../../services/storage_service.dart';
-import '../../providers/auth_provider.dart';
 
 class IDCardCameraScreen extends StatefulWidget {
   final void Function(String uploadedUrl) onSuccess;
-  const IDCardCameraScreen({super.key, required this.onSuccess});
+  final StorageService storageService;
+  final String uid;
+  const IDCardCameraScreen({
+    super.key,
+    required this.onSuccess,
+    required this.storageService,
+    required this.uid,
+  });
 
   @override
   State<IDCardCameraScreen> createState() => _IDCardCameraScreenState();
@@ -97,14 +102,10 @@ class _IDCardCameraScreenState extends State<IDCardCameraScreen>
   Future<void> _uploadCapture() async {
     if (_capturedBytes == null) return;
     setState(() => _uploading = true);
-    final uid = context.read<AuthProvider>().user!.uid;
-    final url = await context
-        .read<StorageService>()
-        .uploadIdCard(uid, _capturedBytes!);
+    final url = await widget.storageService.uploadIdCard(widget.uid, _capturedBytes!);
     if (!mounted) return;
     widget.onSuccess(url);
   }
-
   void _retake() {
     setState(() {
       _capturedBytes = null;

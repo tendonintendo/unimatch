@@ -67,43 +67,42 @@ class FirestoreService {
     final matchId = MatchModel.generateId(myUid, targetUid);
     final matchRef = _matches.doc(matchId);
 
-    // We return this at the very end
+    // Write own swipe first (no transaction needed for a single write)
+    await swipeRef.set({
+      'targetUid': targetUid,
+      'direction': direction.name,
+      'swipedAt': FieldValue.serverTimestamp(),
+    });
+
+    if (direction != SwipeDirection.like) return null;
+
+    // Now read their swipe — allowed because auth.uid == targetUid (the path's {targetUid})
+    final theirSwipe = await _swipes(targetUid).doc(myUid).get();
+    final theyLikedMe = theirSwipe.exists &&
+        (theirSwipe.data() as Map)['direction'] == 'like';
+
+    if (!theyLikedMe) return null;
+
+    // Check + create match atomically
     return await _db.runTransaction((tx) async {
-      // 1. ALL READS FIRST
-      final theirSwipe = await tx.get(_swipes(targetUid).doc(myUid));
       final existingMatch = await tx.get(matchRef);
+      if (existingMatch.exists) return null;
 
-      // 2. LOGIC
-      final theyLikedMe = theirSwipe.exists &&
-          (theirSwipe.data() as Map)['direction'] == 'like';
-
-      // 3. ALL WRITES LAST
-      tx.set(swipeRef, {
-        'targetUid': targetUid,
-        'direction': direction.name,
-        'swipedAt': FieldValue.serverTimestamp(),
-      });
-
-      if (direction == SwipeDirection.like && theyLikedMe && !existingMatch.exists) {
-        final newMatch = MatchModel(
-          id: matchId,
-          participantIds: [myUid, targetUid],
-          createdAt: DateTime.now(),
-        );
-
-        tx.set(matchRef, newMatch.toFirestore());
-        return newMatch; // Return the match object
-      }
-
-      return null; // Return null if no match was created
+      final newMatch = MatchModel(
+        id: matchId,
+        participantIds: [myUid, targetUid],
+        createdAt: DateTime.now(),
+      );
+      tx.set(matchRef, newMatch.toFirestore());
+      return newMatch;
     });
   }
-  // ─── Matches ──────────────────────────────────────────────────────
+// ─── Matches ──────────────────────────────────────────────────────
   Stream<List<MatchModel>> watchMatches(String uid) => _matches
-      .where('participantIds', arrayContains: uid)
-      .orderBy('lastMessageAt', descending: true)
-      .snapshots()
-      .map((s) => s.docs.map((d) => MatchModel.fromFirestore(d)).toList());
+    .where('participantIds', arrayContains: uid)
+    .orderBy('createdAt', descending: true) // use a field that always exists
+    .snapshots()
+    .map((s) => s.docs.map((d) => MatchModel.fromFirestore(d)).toList());
 
   // ─── Messages ─────────────────────────────────────────────────────
   Stream<List<MessageModel>> watchMessages(String matchId) => _messages(matchId)

@@ -6,6 +6,7 @@ import '../../models/user_model.dart';
 import '../../screens/registration/id_card_camera_screen.dart';
 import '../../widgets/tm_button.dart';
 import '../../widgets/tm_button.dart' as tm;
+import '../../services/storage_service.dart';
 
 class RegisterRoleScreen extends StatefulWidget {
   const RegisterRoleScreen({super.key});
@@ -57,22 +58,24 @@ class _RegisterRoleScreenState extends State<RegisterRoleScreen> {
       );
     }
     if (success && mounted) {
-      if (_selectedRole == UserRole.tutor) {
-        final uploadedUrl = await Navigator.of(context).push<String>(
-          MaterialPageRoute(
-            builder: (ctx) => IDCardCameraScreen(
-              onSuccess: (url) {
-                Navigator.of(ctx).pop(url);
-              },
-            ),
-          ),
-        );
+      final uid = auth.user!.uid;
 
-        if (uploadedUrl != null) {
-          await context.read<AuthProvider>().storeTutorIdCard(uploadedUrl);
-        }
+      final uploadedUrl = await Navigator.of(context).push<String>(
+        MaterialPageRoute(
+          builder: (ctx) => IDCardCameraScreen(
+            storageService: context.read<StorageService>(),
+            uid: uid,
+            onSuccess: (url) => Navigator.of(ctx).pop(url),
+          ),
+        ),
+      );
+
+      if (uploadedUrl != null && mounted) {
+        await context.read<AuthProvider>().storeTutorIdCard(uid, uploadedUrl);
       }
 
+      // Now allow the auth state to propagate → navigates to AppShell
+      context.read<AuthProvider>().completeSignUp();
       if (mounted) Navigator.pop(context);
     }
   }

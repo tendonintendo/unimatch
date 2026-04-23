@@ -52,18 +52,6 @@ class TutorMatchApp extends StatelessWidget {
           final user = auth.user;
 
           // 1. Define the core app widget
-          Widget app = MaterialApp(
-            title: 'Tutor Match',
-            debugShowCheckedModeBanner: false,
-            theme: _buildTheme(Brightness.light),
-            darkTheme: _buildTheme(Brightness.dark),
-            themeMode: ThemeMode.system,
-            home: auth.status == AuthStatus.authenticated
-                ? const AppShell()
-                : const LoginScreen(),
-          );
-
-          // 2. Only wrap with MultiProvider if we have a user (and thus, providers)
           if (user != null) {
             return MultiProvider(
               providers: [
@@ -74,12 +62,25 @@ class TutorMatchApp extends StatelessWidget {
                   create: (_) => MatchProvider(matchRepo, userRepo, user.uid),
                 ),
               ],
-              child: app,
+              child: MaterialApp(           // <-- MaterialApp is now the child
+                title: 'Tutor Match',
+                debugShowCheckedModeBanner: false,
+                theme: _buildTheme(Brightness.light),
+                darkTheme: _buildTheme(Brightness.dark),
+                themeMode: ThemeMode.system,
+                home: const AppShell(),     // safe — providers are above it now
+              ),
             );
           }
 
-          // 3. Return plain app for unauthenticated users
-          return app;
+          return MaterialApp(
+            title: 'Tutor Match',
+            debugShowCheckedModeBanner: false,
+            theme: _buildTheme(Brightness.light),
+            darkTheme: _buildTheme(Brightness.dark),
+            themeMode: ThemeMode.system,
+            home: const LoginScreen(),
+          );
         },
       ),
     );
