@@ -1,8 +1,4 @@
 // lib/screens/registration/id_card_camera_screen.dart
-//
-// Shows a live camera preview with a card-shaped overlay.
-// When the YOLO model detects an ID card with sufficient confidence,
-// it auto-captures, shows a confirmation, then uploads to Firebase Storage.
 
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -36,6 +32,7 @@ class _IDCardCameraScreenState extends State<IDCardCameraScreen>
   bool _uploading = false;
   Uint8List? _capturedBytes;
   String? _error;
+  final _previewKey = GlobalKey();
 
   @override
   void initState() {
@@ -54,7 +51,6 @@ class _IDCardCameraScreenState extends State<IDCardCameraScreen>
         setState(() => _error = 'No camera found on this device.');
         return;
       }
-      // Prefer back camera (better for ID scanning)
       final back = cameras.firstWhere(
         (c) => c.lensDirection == CameraLensDirection.back,
         orElse: () => cameras.first,
@@ -64,7 +60,6 @@ class _IDCardCameraScreenState extends State<IDCardCameraScreen>
       await _controller!.initialize();
       if (!mounted) return;
       setState(() {});
-
       _controller!.startImageStream(_onCameraFrame);
     } on CameraException catch (e) {
       setState(() => _error = 'Camera error: ${e.description ?? e.code}');
@@ -73,14 +68,31 @@ class _IDCardCameraScreenState extends State<IDCardCameraScreen>
     }
   }
 
+  Rect _overlayRect() {
+    final rb = _previewKey.currentContext?.findRenderObject() as RenderBox?;
+    final size = rb?.size ?? MediaQuery.of(context).size;
+    final cardW = size.width * 0.82;
+    final cardH = cardW * 0.63;
+    final cardLeft = (size.width - cardW) / 2;
+    final cardTop = (size.height - cardH) / 2 - 30;
+    return Rect.fromLTWH(
+      cardLeft / size.width,
+      cardTop / size.height,
+      cardW / size.width,
+      cardH / size.height,
+    );
+  }
+
   void _onCameraFrame(CameraImage frame) async {
     if (_capturing || _uploading) return;
-    final result = await _idService.analyzeFrame(frame);
+    final result = await _idService.analyzeFrame(
+      frame,
+      overlayRect: _overlayRect(),
+    );
     if (!mounted) return;
     setState(() => _detection = result);
 
-    // Auto-capture when confidence crosses threshold
-    if (result.detected && result.confidence >= 0.75) {
+    if (result.detected && result.confidence >= 0.45) {
       _autoCapture();
     }
   }
@@ -89,6 +101,7 @@ class _IDCardCameraScreenState extends State<IDCardCameraScreen>
     if (_capturing || _uploading) return;
     setState(() => _capturing = true);
     await _controller?.stopImageStream();
+    await Future.delayed(const Duration(milliseconds: 300));
 
     final xFile = await _controller?.takePicture();
     final bytes = await xFile?.readAsBytes();
@@ -102,16 +115,44 @@ class _IDCardCameraScreenState extends State<IDCardCameraScreen>
   Future<void> _uploadCapture() async {
     if (_capturedBytes == null) return;
     setState(() => _uploading = true);
-    final url = await widget.storageService.uploadIdCard(widget.uid, _capturedBytes!);
-    if (!mounted) return;
-    widget.onSuccess(url);
+    try {
+      final url = await widget.storageService.uploadIdCard(
+        widget.uid, _capturedBytes!,
+      );
+      if (!mounted) return;
+      widget.onSuccess(url);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _uploading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Upload failed: ${e.toString()}'),
+          action: SnackBarAction(label: 'Retry', onPressed: _uploadCapture),
+        ),
+      );
+    }
   }
+
   void _retake() {
     setState(() {
       _capturedBytes = null;
       _detection = const CardDetectionResult(detected: false, confidence: 0);
     });
-    _controller?.startImageStream(_onCameraFrame);
+    _restartStream();
+  }
+
+  Future<void> _restartStream() async {
+    try {
+      await _controller?.stopImageStream().catchError((_) {});
+      await _controller?.startImageStream(_onCameraFrame);
+    } catch (e) {
+      debugPrint('Stream restart failed, reinitializing: $e');
+      await _controller?.dispose();
+      _controller = null;
+      if (!mounted) return;
+      setState(() {});
+      _initCamera();
+    }
   }
 
   @override
@@ -125,8 +166,8 @@ class _IDCardCameraScreenState extends State<IDCardCameraScreen>
   Widget build(BuildContext context) {
     if (_error != null) {
       return Scaffold(
-        body: Center(child: Text(_error!,
-            style: const TextStyle(color: Colors.red))),
+        body: Center(
+            child: Text(_error!, style: const TextStyle(color: Colors.red))),
       );
     }
     if (_controller == null || !_controller!.value.isInitialized) {
@@ -143,16 +184,13 @@ class _IDCardCameraScreenState extends State<IDCardCameraScreen>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Camera or captured image
           if (_capturedBytes != null)
             Image.memory(_capturedBytes!, fit: BoxFit.cover)
           else
-            CameraPreview(_controller!),
+            CameraPreview(_controller!, key: _previewKey),
 
-          // Card guide overlay
           _CardGuideOverlay(detected: _detection.detected),
 
-          // Status badge
           Positioned(
             top: 16,
             left: 0,
@@ -160,7 +198,6 @@ class _IDCardCameraScreenState extends State<IDCardCameraScreen>
             child: _StatusBadge(detection: _detection, uploading: _uploading),
           ),
 
-          // Bottom actions
           Positioned(
             bottom: 0,
             left: 0,
@@ -186,7 +223,7 @@ class _CardGuideOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final cardW = size.width * 0.82;
-    final cardH = cardW * 0.63; // CR-80 ratio
+    final cardH = cardW * 0.63;
     return CustomPaint(
       size: Size(size.width, size.height),
       painter: _OverlayPainter(
@@ -218,7 +255,6 @@ class _OverlayPainter extends CustomPainter {
       const Radius.circular(12),
     );
 
-    // Dim the rest
     final dimPaint = Paint()..color = Colors.black54;
     final path = Path()
       ..addRect(Rect.fromLTWH(0, 0, size.width, size.height))
@@ -226,7 +262,6 @@ class _OverlayPainter extends CustomPainter {
       ..fillType = PathFillType.evenOdd;
     canvas.drawPath(path, dimPaint);
 
-    // Card border
     final borderPaint = Paint()
       ..color = borderColor
       ..style = PaintingStyle.stroke
@@ -287,11 +322,13 @@ class _BottomBar extends StatelessWidget {
   final bool uploading;
   final VoidCallback onRetake;
   final VoidCallback onConfirm;
-  const _BottomBar(
-      {required this.captured,
-      required this.uploading,
-      required this.onRetake,
-      required this.onConfirm});
+
+  const _BottomBar({
+    required this.captured,
+    required this.uploading,
+    required this.onRetake,
+    required this.onConfirm,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -324,8 +361,7 @@ class _BottomBar extends StatelessWidget {
                               height: 18,
                               child: CircularProgressIndicator(strokeWidth: 2))
                           : const Icon(Icons.upload),
-                      label:
-                          Text(uploading ? 'Uploading…' : 'Use this photo'),
+                      label: Text(uploading ? 'Uploading…' : 'Use this photo'),
                     ),
                   ),
                 ],

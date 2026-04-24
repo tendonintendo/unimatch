@@ -60,21 +60,22 @@ class _RegisterRoleScreenState extends State<RegisterRoleScreen> {
     if (success && mounted) {
       final uid = auth.user!.uid;
 
-      final uploadedUrl = await Navigator.of(context).push<String>(
-        MaterialPageRoute(
-          builder: (ctx) => IDCardCameraScreen(
-            storageService: context.read<StorageService>(),
-            uid: uid,
-            onSuccess: (url) => Navigator.of(ctx).pop(url),
+      if (_selectedRole == UserRole.tutor) {
+        final uploadedUrl = await Navigator.of(context).push<String>(
+          MaterialPageRoute(
+            builder: (ctx) => IDCardCameraScreen(
+              storageService: context.read<StorageService>(),
+              uid: uid,
+              onSuccess: (url) => Navigator.of(ctx).pop(url),
+            ),
           ),
-        ),
-      );
+        );
 
-      if (uploadedUrl != null && mounted) {
-        await context.read<AuthProvider>().storeTutorIdCard(uid, uploadedUrl);
+        if (uploadedUrl != null && mounted) {
+          await context.read<AuthProvider>().storeTutorIdCard(uid, uploadedUrl);
+        }
       }
 
-      // Now allow the auth state to propagate → navigates to AppShell
       context.read<AuthProvider>().completeSignUp();
       if (mounted) Navigator.pop(context);
     }

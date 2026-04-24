@@ -1,28 +1,13 @@
 // lib/services/id_card_service.dart
-//
-// Primary strategy  : Roboflow YOLO model via REST API (no TFLite instability)
-// Fallback strategy : Google ML Kit Document Scanner (scans & crops ID card)
-//
-// WHY REST OVER TFLite FOR THIS YOLO MODEL:
-// The Roboflow-hosted model (id-card-detection-hl0ko/3) exposes a clean HTTPS
-// inference endpoint.  TFLite integration for YOLOv8/v9 requires custom ops,
-// post-processing (NMS), and anchor math that is fragile across Flutter versions.
-// The REST approach is stable, always uses the latest weights, and removes the
-// ~20 MB model binary from the APK.  In production with no internet, swap to
-// ML Kit below.
 
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:flutter/painting.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
-import 'package:image/image.dart' as img;
+import 'package:flutter/painting.dart';
 
-// Detection result returned to the UI
 class CardDetectionResult {
   final bool detected;
-  final double confidence;   // 0.0–1.0
-  final Rect? boundingBox;   // normalised (0–1)
+  final double confidence;
+  final Rect? boundingBox;
 
   const CardDetectionResult({
     required this.detected,
@@ -31,25 +16,23 @@ class CardDetectionResult {
   });
 }
 
-class IDCardService {
-  // ── Roboflow config ───────────────────────────────────────────────
-  static const String _roboflowModel =
-      'id-card-detection-hl0ko/3';
-  static const String _roboflowBaseUrl =
-      'https://detect.roboflow.com';
-  // Store the API key in --dart-define=ROBOFLOW_KEY=xxx or a secrets manager
-  final String _apiKey;
+class _AnalyzeArgs {
+  final CameraImage frame;
+  final Rect crop;
+  const _AnalyzeArgs(this.frame, this.crop);
+}
 
-  // Detection tuning
-  static const double _confidenceThreshold = 0.55;
-  static const int _inferenceIntervalMs = 800; // throttle camera frames
+class IDCardService {
+  static const int _inferenceIntervalMs = 200;
+  static const double _confidenceThreshold = 0.45;
   DateTime _lastInference = DateTime(0);
 
-  IDCardService({required String roboflowApiKey})
-      : _apiKey = roboflowApiKey;
+  IDCardService({String roboflowApiKey = ''});
 
-  // ── Live-frame analysis (called from camera preview) ──────────────
-  Future<CardDetectionResult> analyzeFrame(CameraImage frame) async {
+  Future<CardDetectionResult> analyzeFrame(
+    CameraImage frame, {
+    required Rect overlayRect,
+  }) async {
     final now = DateTime.now();
     if (now.difference(_lastInference).inMilliseconds < _inferenceIntervalMs) {
       return const CardDetectionResult(detected: false, confidence: 0);
@@ -57,125 +40,70 @@ class IDCardService {
     _lastInference = now;
 
     try {
-      final jpeg = await _cameraImageToJpeg(frame);
-      return await _inferViaRoboflow(jpeg);
+      return await compute(_analyzeContrast, _AnalyzeArgs(frame, overlayRect));
     } catch (e) {
-      debugPrint('[IDCard] Roboflow error: $e');
+      debugPrint('[IDCard] Analysis error: $e');
       return const CardDetectionResult(detected: false, confidence: 0);
     }
   }
+  static CardDetectionResult _analyzeContrast(_AnalyzeArgs args) {
+    final frame = args.frame;
+    final crop = args.crop;
 
-  // ── Roboflow REST inference ───────────────────────────────────────
-  Future<CardDetectionResult> _inferViaRoboflow(Uint8List jpeg) async {
-    final base64Image = base64Encode(jpeg);
-
-    final uri = Uri.parse(
-        '$_roboflowBaseUrl/$_roboflowModel?api_key=$_apiKey'
-        '&confidence=${(_confidenceThreshold * 100).toInt()}'
-        '&overlap=30');
-
-    final response = await http
-        .post(
-          uri,
-          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-          body: base64Image,
-        )
-        .timeout(const Duration(seconds: 4));
-
-    if (response.statusCode != 200) {
-      throw Exception('Roboflow HTTP ${response.statusCode}');
-    }
-
-    final json = jsonDecode(response.body) as Map<String, dynamic>;
-    final predictions =
-        (json['predictions'] as List<dynamic>? ?? []);
-
-    if (predictions.isEmpty) {
-      return const CardDetectionResult(detected: false, confidence: 0);
-    }
-
-    // Take highest-confidence prediction
-    final best = predictions
-        .cast<Map<String, dynamic>>()
-        .reduce((a, b) =>
-            (a['confidence'] as double) > (b['confidence'] as double) ? a : b);
-
-    final conf = (best['confidence'] as double);
-    final imgWidth = (json['image']?['width'] as num?)?.toDouble() ?? 1.0;
-    final imgHeight = (json['image']?['height'] as num?)?.toDouble() ?? 1.0;
-
-    // Roboflow returns centre-x, centre-y, width, height
-    final cx = (best['x'] as num).toDouble() / imgWidth;
-    final cy = (best['y'] as num).toDouble() / imgHeight;
-    final bw = (best['width'] as num).toDouble() / imgWidth;
-    final bh = (best['height'] as num).toDouble() / imgHeight;
-
-    return CardDetectionResult(
-      detected: conf >= _confidenceThreshold,
-      confidence: conf,
-      boundingBox: Rect.fromLTWH(cx - bw / 2, cy - bh / 2, bw, bh),
-    );
-  }
-
-  // ── Convert CameraImage (YUV420) to JPEG bytes ────────────────────
-  static Future<Uint8List> _cameraImageToJpeg(CameraImage frame) async {
-    // Run heavy conversion off the main isolate
-    return compute(_convertYuv420ToJpeg, frame);
-  }
-
-  static Uint8List _convertYuv420ToJpeg(CameraImage frame) {
     final yPlane = frame.planes[0];
-    final uPlane = frame.planes[1];
-    final vPlane = frame.planes[2];
-
     final width = frame.width;
     final height = frame.height;
-    final image = img.Image(width: width, height: height);
 
-    for (int y = 0; y < height; y++) {
-      for (int x = 0; x < width; x++) {
-        final uvIndex =
-            (y ~/ 2) * uPlane.bytesPerRow + (x ~/ 2) * uPlane.bytesPerPixel!;
-        final yVal = yPlane.bytes[y * yPlane.bytesPerRow + x];
-        final uVal = uPlane.bytes[uvIndex];
-        final vVal = vPlane.bytes[uvIndex];
+    final x0 = (crop.left * width).round().clamp(0, width - 1);
+    final y0 = (crop.top * height).round().clamp(0, height - 1);
+    final x1 = (crop.right * width).round().clamp(x0 + 1, width);
+    final y1 = (crop.bottom * height).round().clamp(y0 + 1, height);
 
-        final r = (yVal + 1.370705 * (vVal - 128)).clamp(0, 255).toInt();
-        final g = (yVal - 0.698001 * (vVal - 128) - 0.337633 * (uVal - 128))
-            .clamp(0, 255)
-            .toInt();
-        final b = (yVal + 1.732446 * (uVal - 128)).clamp(0, 255).toInt();
+    const step = 4;
+    int pixelCount = 0;
+    int edgeCount = 0;
+    double sumLuma = 0;
+    double sumLumaSq = 0;
 
-        image.setPixelRgba(x, y, r, g, b, 255);
+    for (int y = y0; y < y1 - step; y += step) {
+      for (int x = x0; x < x1 - step; x += step) {
+        final idx = y * yPlane.bytesPerRow + x;
+        final luma = yPlane.bytes[idx].toDouble();
+
+        sumLuma += luma;
+        sumLumaSq += luma * luma;
+        pixelCount++;
+
+        final right = yPlane.bytes[idx + step].toDouble();
+        final below = yPlane.bytes[(y + step) * yPlane.bytesPerRow + x].toDouble();
+        final grad = (luma - right).abs() + (luma - below).abs();
+        if (grad > 20) edgeCount++;
       }
     }
 
-    // Resize to 640×640 to match YOLO input and reduce upload size
-    final resized = img.copyResize(image, width: 640, height: 640);
-    return img.encodeJpg(resized, quality: 85);
+    if (pixelCount == 0) {
+      return const CardDetectionResult(detected: false, confidence: 0);
+    }
+
+    final mean = sumLuma / pixelCount;
+    // Fixed: actual standard deviation
+    final variance = (sumLumaSq / pixelCount) - (mean * mean);
+    final stdDev = variance > 0 ? variance.clamp(0, double.infinity) : 0.0;
+
+    // Normalise stdDev: a blank wall ~5, a card ~30-60, max we care about ~80
+    final contrastScore = (stdDev.clamp(0.0, 800.0) / 800.0);
+
+    final edgeDensity = edgeCount / pixelCount;
+    // Cards typically hit 0.15–0.35 edge density
+    final edgeScore = (edgeDensity.clamp(0.0, 0.35) / 0.35);
+
+    final score = (contrastScore * 0.4 + edgeScore * 0.6).clamp(0.0, 1.0);
+
+    debugPrint('[IDCard] contrast=$contrastScore edge=$edgeScore score=$score');
+
+    return CardDetectionResult(
+      detected: score >= _confidenceThreshold,
+      confidence: score,
+    );
   }
 }
-
-// ── FALLBACK: ML Kit Document Scanner ────────────────────────────────
-// Use this when offline or if REST is unacceptable (data residency).
-// Uncomment and replace IDCardService calls with MlKitIdScanner.
-//
-// import 'package:google_mlkit_document_scanner/google_mlkit_document_scanner.dart';
-//
-// class MlKitIdScanner {
-//   final _scanner = DocumentScanner(
-//     options: DocumentScannerOptions(
-//       documentFormat: DocumentFormat.jpeg,
-//       mode: ScannerMode.filter,
-//       isGalleryImport: false,
-//       pageLimit: 1,
-//     ),
-//   );
-//
-//   Future<String?> scan() async {
-//     final result = await _scanner.startScan();
-//     return result.images.firstOrNull?.uri; // local file path
-//   }
-//
-//   void dispose() => _scanner.close();
-// }

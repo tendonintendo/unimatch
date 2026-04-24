@@ -80,7 +80,8 @@ class AuthProvider extends ChangeNotifier {
     required List<String> subjects,
     double? hourlyRate,
   }) async {
-    _setLoading(true);
+    _loading = true;
+    notifyListeners();
     _suppressAuthStateRebuild = true;
     try {
       _user = await _repo.signUpTutor(
@@ -97,7 +98,7 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       return false;
     } finally {
-      _setLoading(false);
+      _loading = false;
     }
   }
 
