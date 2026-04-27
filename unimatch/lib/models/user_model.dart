@@ -1,4 +1,3 @@
-// lib/models/user_model.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum UserRole { student, tutor }
@@ -10,12 +9,12 @@ class UserModel {
   final String? photoUrl;
   final String? videoUrl;
   final String? cvPdfUrl;
-  final String? idCardUrl;      // Uploaded during tutor registration
-  final bool idVerified;        // Set by backend/admin after review
+  final String? idCardUrl;
+  final bool idVerified;
   final UserRole role;
   final GeoPoint? location;
   final String? bio;
-  final List<String> subjects;  // e.g. ['Math', 'Physics']
+  final List<String> subjects;
   final double? hourlyRate;
   final String? fcmToken;
   final DateTime createdAt;

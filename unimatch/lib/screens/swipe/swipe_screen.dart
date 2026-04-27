@@ -1,13 +1,16 @@
 // lib/screens/swipe/swipe_screen.dart
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_card_swiper/flutter_card_swiper.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_pdfview/flutter_pdfview.dart';
 import '../../models/user_model.dart';
 import '../../models/match_model.dart';
 import '../../providers/swipe_provider.dart';
 import 'match_popup.dart';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 class SwipeScreen extends StatefulWidget {
   const SwipeScreen({super.key});
@@ -35,7 +38,6 @@ class _SwipeScreenState extends State<SwipeScreen> {
         return _EmptyState(onRefresh: prov.loadCandidates);
       }
 
-      // Show match popup when a new match arrives
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (prov.latestMatch != null) {
           _showMatchPopup(context, prov.latestMatch!);
@@ -93,117 +95,235 @@ class _TutorCard extends StatelessWidget {
   final UserModel user;
   const _TutorCard({required this.user});
 
+  Widget _resolveImage(String url, {required String name}) {
+    if (url.startsWith('/') || url.startsWith('file://')) {
+      return Image.file(
+        File(url),
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _PlaceholderAvatar(name: name),
+      );
+    }
+    return CachedNetworkImage(
+      imageUrl: url,
+      fit: BoxFit.cover,
+      placeholder: (_, __) => Container(color: Colors.grey.shade200),
+      errorWidget: (_, __, ___) => _PlaceholderAvatar(name: name),
+    );
+  }
+
+  void _showCvSheet(BuildContext context) {
+    if (user.cvPdfUrl == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This tutor has no CV uploaded')),
+      );
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.75,
+        maxChildSize: 0.95,
+        minChildSize: 0.4,
+        builder: (_, scrollController) => Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    const Icon(Icons.picture_as_pdf, color: Colors.red),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        "${user.name}'s CV",
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(child: _CvViewer(path: user.cvPdfUrl!)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.12),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // Photo
-            if (user.photoUrl != null)
-              CachedNetworkImage(
-                imageUrl: user.photoUrl!,
-                fit: BoxFit.cover,
-                placeholder: (_, __) =>
-                    Container(color: theme.colorScheme.surfaceVariant),
-                errorWidget: (_, __, ___) => _PlaceholderAvatar(name: user.name),
-              )
-            else
-              _PlaceholderAvatar(name: user.name),
-
-            // Gradient overlay
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      Colors.black.withOpacity(0.7),
-                    ],
-                    stops: const [0.5, 1.0],
-                  ),
-                ),
-              ),
-            ),
-
-            // Info overlay
-            Positioned(
-              left: 20,
-              right: 20,
-              bottom: 20,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        user.name,
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      if (user.idVerified)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Colors.green.withOpacity(0.9),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Text('Verified',
-                              style: TextStyle(
-                                  color: Colors.white, fontSize: 11)),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  if (user.bio != null)
-                    Text(
-                      user.bio!,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          color: Colors.white70, fontSize: 13),
-                    ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    children: [
-                      for (final s in user.subjects.take(4))
-                        _SubjectChip(label: s),
-                      if (user.hourlyRate != null)
-                        _SubjectChip(
-                          label: '\$${user.hourlyRate!.toStringAsFixed(0)}/hr',
-                          color: Colors.amber.shade700,
-                        ),
-                    ],
-                  ),
-                ],
-              ),
+    return GestureDetector(
+      onTap: () => _showCvSheet(context),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.12),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
             ),
           ],
         ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Photo
+              if (user.photoUrl != null)
+                _resolveImage(user.photoUrl!, name: user.name)
+              else
+                _PlaceholderAvatar(name: user.name),
+
+              // Gradient overlay
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        Colors.black.withOpacity(0.7),
+                      ],
+                      stops: const [0.5, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+
+              // "Tap to view CV" hint
+              if (user.cvPdfUrl != null)
+                Positioned(
+                  top: 16,
+                  right: 16,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.picture_as_pdf,
+                            color: Colors.white, size: 14),
+                        SizedBox(width: 4),
+                        Text('CV',
+                            style: TextStyle(
+                                color: Colors.white, fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                ),
+
+              // Info overlay
+              Positioned(
+                left: 20,
+                right: 20,
+                bottom: 20,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          user.name,
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        if (user.idVerified)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withOpacity(0.9),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Text('Verified',
+                                style: TextStyle(
+                                    color: Colors.white, fontSize: 11)),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    if (user.bio != null)
+                      Text(
+                        user.bio!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 13),
+                      ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: [
+                        for (final s in user.subjects.take(4))
+                          _SubjectChip(label: s),
+                        if (user.hourlyRate != null)
+                          _SubjectChip(
+                            label:
+                                '\$${user.hourlyRate!.toStringAsFixed(0)}/hr',
+                            color: Colors.amber.shade700,
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     ).animate().fadeIn(duration: 300.ms).slideY(begin: 0.04, end: 0);
+  }
+}
+
+class _CvViewer extends StatelessWidget {
+  final String path;
+  const _CvViewer({required this.path});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<bool>(
+      future: File(path).exists(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (!snapshot.data!) {
+          return const Center(child: Text('CV file not found'));
+        }
+        return SfPdfViewer.file(File(path));
+      },
+    );
   }
 }
 
@@ -324,8 +444,7 @@ class _EmptyState extends StatelessWidget {
           Text('No more profiles nearby',
               style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
-          const Text('Check back soon!',
-              style: TextStyle(color: Colors.grey)),
+          const Text('Check back soon!', style: TextStyle(color: Colors.grey)),
           const SizedBox(height: 24),
           OutlinedButton.icon(
             onPressed: onRefresh,

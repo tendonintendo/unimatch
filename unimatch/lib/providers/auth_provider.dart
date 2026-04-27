@@ -3,11 +3,13 @@ import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/user_model.dart';
 import '../repositories/auth_repository.dart';
+import '../services/storage_service.dart';
 
 enum AuthStatus { unknown, authenticated, unauthenticated }
 
 class AuthProvider extends ChangeNotifier {
   final AuthRepository _repo;
+  final StorageService _storageService = StorageService();
 
   AuthStatus _status = AuthStatus.unknown;
   UserModel? _user;
@@ -22,6 +24,35 @@ class AuthProvider extends ChangeNotifier {
 
   AuthProvider(this._repo) {
     _repo.authStateChanges.listen(_onAuthStateChanged);
+  }
+
+  Future<void> updateProfile({
+    Uint8List? photoBytes,
+    Uint8List? cvBytes,
+    String? bio,
+  }) async {
+    final uid = _user?.uid;
+    if (uid == null) return;
+
+    final updates = <String, dynamic>{};
+
+    if (photoBytes != null) {
+      updates['photoUrl'] = await _storageService.uploadProfileImage(uid, photoBytes);
+    }
+    if (cvBytes != null) {
+      updates['cvPdfUrl'] = await _storageService.uploadCvPdf(uid, cvBytes);
+    }
+    if (bio != null) updates['bio'] = bio;
+
+    if (updates.isEmpty) return;
+
+    await _repo.firestoreService.updateUser(uid, updates);
+    _user = _user!.copyWith(
+      photoUrl: updates['photoUrl'] as String?,
+      cvPdfUrl: updates['cvPdfUrl'] as String?,
+      bio: updates['bio'] as String?,
+    );
+    notifyListeners();
   }
 
   void _onAuthStateChanged(User? firebaseUser) async {

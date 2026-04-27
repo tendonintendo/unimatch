@@ -1,4 +1,3 @@
-// lib/services/storage_service.dart
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
@@ -14,6 +13,13 @@ class StorageService {
   Future<String> uploadProfileImage(String uid, Uint8List bytes) async {
     final dir = await getApplicationDocumentsDirectory();
     final file = File('${dir.path}/profile_$uid.jpg');
+    await file.writeAsBytes(bytes);
+    return file.path;
+  }
+
+  Future<String> uploadCvPdf(String uid, Uint8List bytes) async {
+    final dir = await getApplicationDocumentsDirectory();
+    final file = File('${dir.path}/cv_$uid.pdf');
     await file.writeAsBytes(bytes);
     return file.path;
   }
