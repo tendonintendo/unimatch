@@ -24,10 +24,21 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) {
+        _scroll.animateTo(
+          _scroll.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final authProv = context.read<AuthProvider>();
-    final myUid = authProv.user!.uid;
+    final myUid = context.read<AuthProvider>().user!.uid;
 
     return ChangeNotifierProvider(
       create: (ctx) => ChatProvider(
@@ -43,29 +54,20 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         body: Column(
           children: [
-            Expanded(child: _MessageList(myUid: myUid)),
+            Expanded(
+              child: _MessageList(
+                myUid: myUid,
+                scrollController: _scroll,
+              ),
+            ),
             _InputBar(
               controller: _input,
-              onSend: (text) async {
-                _input.clear();
-                await context.read<ChatProvider>().sendMessage(text);
-                _scrollToBottom();
-              },
+              onAfterSend: _scrollToBottom,
             ),
           ],
         ),
       ),
     );
-  }
-
-  void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scroll.hasClients) {
-        _scroll.animateTo(_scroll.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut);
-      }
-    });
   }
 }
 
@@ -78,8 +80,7 @@ class _ChatAppBarTitle extends StatelessWidget {
       children: [
         const CircleAvatar(radius: 18, child: Icon(Icons.person, size: 20)),
         const SizedBox(width: 10),
-        Text('Chat',
-            style: Theme.of(context).textTheme.titleMedium),
+        Text('Chat', style: Theme.of(context).textTheme.titleMedium),
       ],
     );
   }
@@ -87,7 +88,8 @@ class _ChatAppBarTitle extends StatelessWidget {
 
 class _MessageList extends StatelessWidget {
   final String myUid;
-  const _MessageList({required this.myUid});
+  final ScrollController scrollController;
+  const _MessageList({required this.myUid, required this.scrollController});
 
   @override
   Widget build(BuildContext context) {
@@ -95,11 +97,11 @@ class _MessageList extends StatelessWidget {
       final msgs = prov.messages;
       if (msgs.isEmpty) {
         return const Center(
-          child: Text('Say hello! 👋',
-              style: TextStyle(color: Colors.grey)),
+          child: Text('Say hello! 👋', style: TextStyle(color: Colors.grey)),
         );
       }
       return ListView.builder(
+        controller: scrollController,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         itemCount: msgs.length,
         itemBuilder: (_, i) {
@@ -132,7 +134,8 @@ class _MessageBubble extends StatelessWidget {
           Container(
             constraints: BoxConstraints(
                 maxWidth: MediaQuery.of(context).size.width * 0.72),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
               color: isMe
                   ? theme.colorScheme.primary
@@ -163,7 +166,8 @@ class _MessageBubble extends StatelessWidget {
                     fontSize: 10,
                     color: isMe
                         ? theme.colorScheme.onPrimary.withOpacity(0.6)
-                        : theme.colorScheme.onSurfaceVariant.withOpacity(0.6),
+                        : theme.colorScheme.onSurfaceVariant
+                            .withOpacity(0.6),
                   ),
                 ),
               ],
@@ -177,8 +181,14 @@ class _MessageBubble extends StatelessWidget {
 
 class _InputBar extends StatelessWidget {
   final TextEditingController controller;
-  final void Function(String) onSend;
-  const _InputBar({required this.controller, required this.onSend});
+  final VoidCallback onAfterSend;
+  const _InputBar({required this.controller, required this.onAfterSend});
+
+  void _send(BuildContext context, String text) {
+    if (text.trim().isEmpty) return;
+    controller.clear();
+    context.read<ChatProvider>().sendMessage(text).then((_) => onAfterSend());
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -194,8 +204,7 @@ class _InputBar extends StatelessWidget {
                 decoration: InputDecoration(
                   hintText: 'Type a message…',
                   filled: true,
-                  fillColor:
-                      Theme.of(context).colorScheme.surfaceVariant,
+                  fillColor: Theme.of(context).colorScheme.surfaceVariant,
                   contentPadding: const EdgeInsets.symmetric(
                       horizontal: 16, vertical: 10),
                   border: OutlineInputBorder(
@@ -203,16 +212,12 @@ class _InputBar extends StatelessWidget {
                     borderSide: BorderSide.none,
                   ),
                 ),
-                onSubmitted: onSend,
+                onSubmitted: (text) => _send(context, text),
               ),
             ),
             const SizedBox(width: 8),
             IconButton.filled(
-              onPressed: () {
-                if (controller.text.trim().isNotEmpty) {
-                  onSend(controller.text);
-                }
-              },
+              onPressed: () => _send(context, controller.text),
               icon: const Icon(Icons.send_rounded),
             ),
           ],
