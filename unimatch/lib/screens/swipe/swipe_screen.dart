@@ -5,7 +5,6 @@ import 'package:flutter_card_swiper/flutter_card_swiper.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:flutter_pdfview/flutter_pdfview.dart';
 import '../../models/user_model.dart';
 import '../../models/match_model.dart';
 import '../../providers/swipe_provider.dart';

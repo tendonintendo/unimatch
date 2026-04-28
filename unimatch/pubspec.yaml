@@ -61,6 +61,7 @@ dependencies:
   http: ^1.2.2
   flutter_pdfview: ^1.3.2
   syncfusion_flutter_pdfviewer: ^33.2.3
+  awesome_notifications: ^0.11.0
 
 dev_dependencies:
   flutter_test:
