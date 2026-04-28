@@ -35,11 +35,11 @@ Future<void> main() async {
 
   await AwesomeNotifications().requestPermissionToSendNotifications();
 
-  runApp(const TutorMatchApp());
+  runApp(const UniMatchApp());
 }
 
-class TutorMatchApp extends StatelessWidget {
-  const TutorMatchApp({super.key});
+class UniMatchApp extends StatelessWidget {
+  const UniMatchApp({super.key});
 
   @override
   Widget build(BuildContext context) {

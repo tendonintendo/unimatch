@@ -266,7 +266,7 @@ class _Logo extends StatelessWidget {
         ),
         const SizedBox(width: 12),
         Text(
-          'TutorMatch',
+          'UniMatch',
           style: TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.w800,
