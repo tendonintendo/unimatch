@@ -1,0 +1,9 @@
+android/
+ios/
+linux/
+macos/
+windows/
+test/
+.idea/
+build/
+crash_log.txt
