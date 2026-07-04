@@ -37,7 +37,10 @@ class AuthProvider extends ChangeNotifier {
     final updates = <String, dynamic>{};
 
     if (photoBytes != null) {
-      updates['photoUrl'] = await _storageService.uploadProfileImage(uid, photoBytes);
+      updates['photoUrl'] = await _storageService.uploadProfileImage(
+        uid,
+        photoBytes,
+      );
     }
     if (cvBytes != null) {
       updates['cvPdfUrl'] = await _storageService.uploadCvPdf(uid, cvBytes);
@@ -90,17 +93,23 @@ class AuthProvider extends ChangeNotifier {
     required String password,
     required String name,
   }) async {
-    _setLoading(true);
+    _loading = true;
+    notifyListeners();
+    _suppressAuthStateRebuild = true;
     try {
       _user = await _repo.signUpStudent(
-          email: email, password: password, name: name);
+        email: email,
+        password: password,
+        name: name,
+      );
       return true;
     } on FirebaseAuthException catch (e) {
+      _suppressAuthStateRebuild = false;
       _error = _mapAuthError(e.code);
       notifyListeners();
       return false;
     } finally {
-      _setLoading(false);
+      _loading = false;
     }
   }
 

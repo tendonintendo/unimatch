@@ -1,4 +1,3 @@
-// lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
@@ -16,22 +15,20 @@ import 'repositories/swipe_repository.dart';
 import 'repositories/match_repository.dart';
 import 'repositories/user_repository.dart';
 import 'repositories/chat_repository.dart';
+import 'models/user_model.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  await AwesomeNotifications().initialize(
-    null,
-    [
-      NotificationChannel(
-        channelKey: 'matches',
-        channelName: 'Matches',
-        channelDescription: 'New match notifications',
-        importance: NotificationImportance.Max,
-      ),
-    ],
-  );
+  await AwesomeNotifications().initialize(null, [
+    NotificationChannel(
+      channelKey: 'matches',
+      channelName: 'Matches',
+      channelDescription: 'New match notifications',
+      importance: NotificationImportance.Max,
+    ),
+  ]);
 
   await AwesomeNotifications().requestPermissionToSendNotifications();
 
@@ -63,7 +60,37 @@ class UniMatchApp extends StatelessWidget {
         builder: (ctx, auth, _) {
           final user = auth.user;
 
+          if (user != null && user.role == UserRole.student) {
+            return const MaterialApp(
+              debugShowCheckedModeBanner: false,
+              home: Scaffold(
+                body: Center(child: Text('Please contact +62 82215758175')),
+              ),
+            );
+          }
+
           if (user != null) {
+            if (user.role == 'student' || user.role == 'Student') {
+              return MaterialApp(
+                title: 'Unimatch',
+                debugShowCheckedModeBanner: false,
+                theme: _buildTheme(Brightness.light),
+                darkTheme: _buildTheme(Brightness.dark),
+                themeMode: ThemeMode.system,
+                home: const Scaffold(
+                  body: Center(
+                    child: Text(
+                      'Please contact +62 82215758175',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }
+
             return MultiProvider(
               providers: [
                 ChangeNotifierProvider(
@@ -74,7 +101,7 @@ class UniMatchApp extends StatelessWidget {
                 ),
               ],
               child: MaterialApp(
-                title: 'Tutor Match',
+                title: 'Unimatch',
                 debugShowCheckedModeBanner: false,
                 theme: _buildTheme(Brightness.light),
                 darkTheme: _buildTheme(Brightness.dark),
@@ -85,7 +112,7 @@ class UniMatchApp extends StatelessWidget {
           }
 
           return MaterialApp(
-            title: 'Tutor Match',
+            title: 'Unimatch',
             debugShowCheckedModeBanner: false,
             theme: _buildTheme(Brightness.light),
             darkTheme: _buildTheme(Brightness.dark),
