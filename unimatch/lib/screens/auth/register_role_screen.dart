@@ -47,7 +47,10 @@ class _RegisterRoleScreenState extends State<RegisterRoleScreen> {
         name: _nameCtrl.text.trim(),
       );
     } else {
-      final subjects = _subjectsCtrl.text.split(',').map((s) => s.trim()).toList();
+      final subjects = _subjectsCtrl.text
+          .split(',')
+          .map((s) => s.trim())
+          .toList();
       final rate = double.tryParse(_rateCtrl.text);
       success = await auth.signUpTutor(
         email: _emailCtrl.text.trim(),
@@ -71,9 +74,9 @@ class _RegisterRoleScreenState extends State<RegisterRoleScreen> {
           ),
         );
 
-        if (uploadedUrl != null && mounted) {
-          await context.read<AuthProvider>().storeTutorIdCard(uid, uploadedUrl);
-        }
+        if (uploadedUrl == null) return;
+
+        await context.read<AuthProvider>().storeTutorIdCard(uid, uploadedUrl);
       }
 
       context.read<AuthProvider>().completeSignUp();
@@ -96,10 +99,7 @@ class _RegisterRoleScreenState extends State<RegisterRoleScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Choose your role',
-                  style: theme.textTheme.headlineSmall,
-                ),
+                Text('Choose your role', style: theme.textTheme.headlineSmall),
                 const SizedBox(height: 16),
                 Row(
                   children: [
@@ -107,7 +107,8 @@ class _RegisterRoleScreenState extends State<RegisterRoleScreen> {
                       child: _RoleCard(
                         role: UserRole.student,
                         selected: _selectedRole == UserRole.student,
-                        onTap: () => setState(() => _selectedRole = UserRole.student),
+                        onTap: () =>
+                            setState(() => _selectedRole = UserRole.student),
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -115,7 +116,8 @@ class _RegisterRoleScreenState extends State<RegisterRoleScreen> {
                       child: _RoleCard(
                         role: UserRole.tutor,
                         selected: _selectedRole == UserRole.tutor,
-                        onTap: () => setState(() => _selectedRole = UserRole.tutor),
+                        onTap: () =>
+                            setState(() => _selectedRole = UserRole.tutor),
                       ),
                     ),
                   ],
@@ -126,7 +128,8 @@ class _RegisterRoleScreenState extends State<RegisterRoleScreen> {
                     label: 'Name',
                     controller: _nameCtrl,
                     prefixIcon: const Icon(Icons.person),
-                    validator: (v) => v?.isEmpty ?? true ? 'Enter your name' : null,
+                    validator: (v) =>
+                        v?.isEmpty ?? true ? 'Enter your name' : null,
                   ),
                   const SizedBox(height: 16),
                   tm.TMTextField(
@@ -134,7 +137,9 @@ class _RegisterRoleScreenState extends State<RegisterRoleScreen> {
                     controller: _emailCtrl,
                     keyboardType: TextInputType.emailAddress,
                     prefixIcon: const Icon(Icons.email),
-                    validator: (v) => v?.contains('@') ?? false ? null : 'Enter a valid email',
+                    validator: (v) => v?.contains('@') ?? false
+                        ? null
+                        : 'Enter a valid email',
                   ),
                   const SizedBox(height: 16),
                   tm.TMTextField(
@@ -144,9 +149,13 @@ class _RegisterRoleScreenState extends State<RegisterRoleScreen> {
                     prefixIcon: const Icon(Icons.lock),
                     suffixIcon: IconButton(
                       onPressed: () => setState(() => _obscure = !_obscure),
-                      icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
+                      icon: Icon(
+                        _obscure ? Icons.visibility : Icons.visibility_off,
+                      ),
                     ),
-                    validator: (v) => v != null && v.length >= 6 ? null : 'Password must be at least 6 characters',
+                    validator: (v) => v != null && v.length >= 6
+                        ? null
+                        : 'Password must be at least 6 characters',
                   ),
                   if (_selectedRole == UserRole.tutor) ...[
                     const SizedBox(height: 16),
@@ -154,7 +163,8 @@ class _RegisterRoleScreenState extends State<RegisterRoleScreen> {
                       label: 'Subjects (comma separated)',
                       controller: _subjectsCtrl,
                       prefixIcon: const Icon(Icons.book),
-                      validator: (v) => v?.isEmpty ?? true ? 'Enter subjects' : null,
+                      validator: (v) =>
+                          v?.isEmpty ?? true ? 'Enter subjects' : null,
                     ),
                     const SizedBox(height: 16),
                     tm.TMTextField(
@@ -205,9 +215,13 @@ class _RoleCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: selected ? theme.colorScheme.primaryContainer : theme.colorScheme.surface,
+          color: selected
+              ? theme.colorScheme.primaryContainer
+              : theme.colorScheme.surface,
           border: Border.all(
-            color: selected ? theme.colorScheme.primary : theme.colorScheme.outline,
+            color: selected
+                ? theme.colorScheme.primary
+                : theme.colorScheme.outline,
             width: selected ? 2 : 1,
           ),
           borderRadius: BorderRadius.circular(12),
@@ -217,14 +231,18 @@ class _RoleCard extends StatelessWidget {
             Icon(
               role == UserRole.student ? Icons.school : Icons.psychology,
               size: 48,
-              color: selected ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+              color: selected
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.onSurface,
             ),
             const SizedBox(height: 8),
             Text(
               role.name.toUpperCase(),
               style: TextStyle(
                 fontWeight: FontWeight.bold,
-                color: selected ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                color: selected
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurface,
               ),
             ),
           ],
